@@ -15,6 +15,7 @@
   *
   ******************************************************************************
   * See https://forbot.pl/blog/kurs-stm32l4-termometry-ds18b20-1-wire-uart-id47771
+  * See https://forbot.pl/blog/kurs-stm32l4-oszczedzanie-energii-5-lat-na-baterii-id46581
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -362,7 +363,7 @@ int main(void)
   MX_TIM3_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  //printf("Hello!\n");
+  printf("Hello!\n");
 
 #if 0
   if (ds18b20_init() != HAL_OK) {
