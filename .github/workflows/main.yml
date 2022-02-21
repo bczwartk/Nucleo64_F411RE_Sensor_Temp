@@ -1,0 +1,103 @@
+name: Build and SCA
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  run_parasoft_cpptest_sca:
+    # The type of runner that the job will run on
+    runs-on: [ self-hosted, Linux, X64 ]
+    env:
+      CPPTEST_DIR: /home/support/parasoft/cpptest-std
+      ST_DIR: /home/support/st
+      CROSS_GCC_DIR: /home/support/st/stm32cubeide_1.8.0/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.9-2020-q2-update.linux64_2.0.0.202105311346/tools/bin
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      security-events: write   # To upload sarif files
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - name: Prepare environment
+        run: |
+              echo "$CPPTEST_DIR/bin" >> $GITHUB_PATH
+              echo "$CPPTEST_DIR" >> $GITHUB_PATH
+              echo "$CROSS_GCC_DIR" >> $GITHUB_PATH
+              
+      - name: Check tool chains
+        run: |
+              env | sort
+              arm-none-eabi-gcc -v
+              cpptestcli -version
+              echo "Project: ${GITHUB_REPOSITORY#*/}"
+        
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Runs a single command using the runners shell
+      - name: Collect BDF file
+        run: |
+          env | sort
+          rm -rf $ST_DIR/workspace
+          cpptesttrace \
+            --cpptesttraceOutputFile=`pwd`/cpptestscan.bdf \
+            --cpptesttraceProjectName=Nucleo64_F411RE_Sensor_Temp \
+            $ST_DIR/stm32cubeide_1.8.0/headless-build.sh \
+            -data $ST_DIR/workspace \
+            -import ${{ github.workspace }} \
+            -cleanBuild Nucleo64_F411RE_Sensor_Temp/Debug -no-indexer
+          ls -l cpptestscan.bdf
+      
+      # You may pin to the exact commit or the version.
+      # uses: parasoft/run-cpptest-action@aeb0150eeb0f96098ad3bac53609fd462f88c4f6
+      - name: Parasoft C/C++test SCA for Timer
+        uses: parasoft/run-cpptest-action@1.0.1
+        with:
+          # Installation folder of Parasoft C/C++test. If not specified, the cpptestcli executable must be added to $PATH.
+          installDir: $CPPTEST_DIR
+          # Working directory for running C/C++test.
+          workingDir: ${{ github.workspace }}
+          # Identifier of a compiler configuration. Ensure you specify the configuration that matches your compiler.
+          compilerConfig: arm_gcc_9
+          # Test configuration to be used for code analysis.
+          # testConfig: builtin://Recommended Rules
+          # Output folder for reports from code analysis.
+          # reportDir: # optional, default is reports
+          # Format of reports from code analysis.
+          # reportFormat: # optional, default is xml,html,sarif
+          # Input scope for analysis (typically, cpptestscan.bdf or compile_commands.json, depending on the project type and the build system).
+          # input: # optional, default is cpptestscan.bdf
+          # Additional parameters for the cpptestcli executable.
+          additionalParams: -showdetails -property console.verbosity.level=high -property cpptest.compiler.dir.user=$ST_DIR/custom_compilers -resource ${{ github.workspace }}/Core
+          # Command line pattern for running C/C++test.
+          # commandLinePattern: # optional, default is ${cpptestcli} -compiler "${compilerConfig}" -config "${testConfig}" -property report.format=${reportFormat} -report "${reportDir}" -module . -input "${input}" ${additionalParams}
+          
+      # Uploads analysis results in the SARIF format, so that they are displayed as GitHub code scanning alerts.
+      # Note: RequestError [HttpError]: Advanced Security must be enabled for this repository to use code scanning.
+      # - name: Upload results (SARIF)
+      #   if: always()
+      #   uses: github/codeql-action/upload-sarif@v1
+      #   with:
+      #     sarif_file: reports/report.sarif
+    
+      # Uploads an archive that includes all report files (.xml, .html, .sarif).
+      # - name: Archive reports
+      #   if: always()
+      #   uses: actions/upload-artifact@v2
+      #   with:
+      #     name: CpptestReports
+      #     path: reports/*.*        
+      
+      
+      
