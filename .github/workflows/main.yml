@@ -52,11 +52,11 @@ jobs:
           rm -rf $ST_DIR/workspace
           cpptesttrace \
             --cpptesttraceOutputFile=`pwd`/cpptestscan.bdf \
-            --cpptesttraceProjectName=Nucleo64_F411RE_Sensor_Temp \
+            --cpptesttraceProjectName="${GITHUB_REPOSITORY#*/}" \
             $ST_DIR/stm32cubeide_1.8.0/headless-build.sh \
             -data $ST_DIR/workspace \
             -import ${{ github.workspace }} \
-            -cleanBuild Nucleo64_F411RE_Sensor_Temp/Debug -no-indexer
+            -cleanBuild "${GITHUB_REPOSITORY#*/}/Debug" -no-indexer
           ls -l cpptestscan.bdf
       
       # You may pin to the exact commit or the version.
@@ -85,11 +85,11 @@ jobs:
           
       # Uploads analysis results in the SARIF format, so that they are displayed as GitHub code scanning alerts.
       # Note: RequestError [HttpError]: Advanced Security must be enabled for this repository to use code scanning.
-      # - name: Upload results (SARIF)
-      #   if: always()
-      #   uses: github/codeql-action/upload-sarif@v1
-      #   with:
-      #     sarif_file: reports/report.sarif
+      - name: Upload results (SARIF)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v1
+        with:
+          sarif_file: reports/report.sarif
     
       # Uploads an archive that includes all report files (.xml, .html, .sarif).
       # - name: Archive reports
