@@ -44,6 +44,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+RTC_HandleTypeDef hrtc;
+
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
@@ -57,6 +59,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -71,6 +74,23 @@ int __io_putchar(int ch)
   }
   HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
   return 1;
+}
+
+void HAL_Delay(uint32_t Delay)
+{
+  uint32_t tickstart = HAL_GetTick();
+  uint32_t wait = Delay;
+
+  /* Add a period to guaranty minimum wait */
+  if (wait < HAL_MAX_DELAY)
+  {
+    wait += (uint32_t)uwTickFreq;
+  }
+
+  while ((HAL_GetTick() - tickstart) < wait)
+  {
+	  __WFI();
+  }
 }
 
 void delay_us(uint32_t us)
@@ -359,6 +379,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_TIM3_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   printf("Hello!\n");
 
@@ -376,7 +397,7 @@ int main(void)
 
   // HAL_TIM_Base_Start_IT(&htim3);
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 6; i++) {
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     HAL_Delay(50);
   }
@@ -387,6 +408,33 @@ int main(void)
 
   const uint8_t ds1[] = { 0x28, 0xFF, 0xF2, 0xB5, 0x50, 0x16, 0x03, 0xA2 };
   const uint8_t ds2[] = { 0x28, 0x21, 0x20, 0xD6, 0x07, 0x00, 0x00, 0x15 };
+
+  ds18b20_start_measure(ds1);
+  ds18b20_start_measure(ds2);
+  HAL_Delay(750);
+
+  float temp = ds18b20_get_temp(ds1);
+  if (temp <= -80.0f) {
+    printf("Sensor error (1)...\n");
+  } else {
+    printf("T1 = %.1f*C\n", temp);
+  }
+
+  temp = ds18b20_get_temp(ds2);
+  if (temp <= -80.0f) {
+    printf("Sensor error (2)...\n");
+  } else {
+    printf("T2 = %.1f*C\n", temp);
+  }
+
+  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  HAL_Delay(100);
+  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+
+  // Enter the Standby mode
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+  __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
+  HAL_PWR_EnterSTANDBYMode();
 
   /* USER CODE END 2 */
 
@@ -468,7 +516,8 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
@@ -489,6 +538,74 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x0;
+  sTime.Minutes = 0x0;
+  sTime.Seconds = 0x0;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+  sDate.Month = RTC_MONTH_JANUARY;
+  sDate.Date = 0x1;
+  sDate.Year = 0x0;
+
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Enable the WakeUp
+  */
+  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 4, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
 }
 
 /**
@@ -585,10 +702,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(DS_GPIO_Port, DS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, DS_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : USER_BUTTON_Pin */
   GPIO_InitStruct.Pin = USER_BUTTON_Pin;
@@ -596,19 +710,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_BUTTON_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : DS_Pin */
+  GPIO_InitStruct.Pin = DS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(DS_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : DS_Pin */
-  GPIO_InitStruct.Pin = DS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(DS_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 8, 0);
