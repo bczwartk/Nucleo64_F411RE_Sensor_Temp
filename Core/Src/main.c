@@ -36,7 +36,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 // set to 1 to use microsecond delay, set to 0 to use 1-wire USART communication:
-#define US_CLOCK_DELAY (0)
+#define US_CLOCK_DELAY (1)
 // set to zero if messaging USART is not to be used:
 #define COMM_USART_ENABLED (1)
 /* USER CODE END PD */
@@ -51,7 +51,6 @@ RTC_HandleTypeDef hrtc;
 
 TIM_HandleTypeDef htim3;
 
-UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -64,7 +63,6 @@ static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_RTC_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -372,13 +370,24 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  volatile uint32_t *DWT_CONTROL = (uint32_t *) 0xE0001000;
+  volatile uint32_t *DWT_CYCCNT = (uint32_t *) 0xE0001004;
+  volatile uint32_t *DEMCR = (uint32_t *) 0xE000EDFC;
+  volatile uint32_t *LAR  = (uint32_t *) 0xE0001FB0;   // <-- added lock access register
 
+  *DEMCR = *DEMCR | 0x01000000;     // enable trace
+  *LAR = 0xC5ACCE55;                // <-- added unlock access to DWT (ITM, etc.)registers
+  *DWT_CYCCNT = 0;                  // clear DWT cycle counter
+  *DWT_CONTROL = *DWT_CONTROL | 1;  // enable DWT cycle counter
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+  unsigned long int dwt_cnt_start = DWT->CYCCNT;
+  // HAL_Delay(100);
+  // unsigned int dwt_cnt_100ms = DWT->CYCCNT;
 
   /* USER CODE END SysInit */
 
@@ -387,8 +396,9 @@ int main(void)
   MX_TIM3_Init();
   MX_RTC_Init();
   MX_USART2_UART_Init();
-  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  // printf("##  100ms ticks: %lu\n", (dwt_cnt_100ms - dwt_cnt_start));
+  // printf("##  Init ticks: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
   // "hello" blinks - disable for now, we need to conserve power
   // printf("Hello!\n");
@@ -397,10 +407,10 @@ int main(void)
   //   HAL_Delay(20);
   // }
 
-
   if (ds18b20_init() != HAL_OK) {
     Error_Handler();
   }
+  // printf("##  Init DS ticks: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
 #if 0
   uint8_t ds1[DS18B20_ROM_CODE_SIZE];
@@ -413,22 +423,29 @@ int main(void)
   const uint8_t ds2[] = { 0x28, 0x21, 0x20, 0xD6, 0x07, 0x00, 0x00, 0x15 };
 
   ds18b20_start_measure(ds1);
+  // printf("##  Start measure 1: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
   ds18b20_start_measure(ds2);
+  // printf("##  Start measure 2: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
   HAL_Delay(750);
+  // printf("##  Measure delay: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
   float temp = ds18b20_get_temp(ds1);
+  // printf("##  Get temp 1: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
   if (temp <= -80.0f) {
     printf("Sensor error (1)...\n");
   } else {
     printf("T1 = %.1f*C\n", temp);
   }
+  // printf("##  Temp 1: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
   temp = ds18b20_get_temp(ds2);
+  // printf("##  Get temp 2: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
   if (temp <= -80.0f) {
     printf("Sensor error (2)...\n");
   } else {
     printf("T2 = %.1f*C\n", temp);
   }
+  // printf("##  Temp 2: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
   // short blink to acknowledge we are alive:
   // - apparently 100us is enough and still visible, how low can we go?
@@ -436,11 +453,13 @@ int main(void)
   // HAL_Delay(1);
   delay_us(100);
   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  printf("##  Toggled: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
   // Enter the Standby mode
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
   __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
   HAL_PWR_EnterSTANDBYMode();
+
 
   /* USER CODE END 2 */
 
@@ -658,39 +677,6 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
-
-}
-
-/**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_HalfDuplex_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
 
 }
 
