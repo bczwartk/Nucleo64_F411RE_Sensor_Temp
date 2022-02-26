@@ -35,7 +35,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+// set to 1 to use microsecond delay, set to 0 to use 1-wire USART communication:
 #define US_CLOCK_DELAY (1)
+// set to zero if messaging USART is not to be used:
+#define COMM_USART_ENABLED (1)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,6 +51,7 @@ RTC_HandleTypeDef hrtc;
 
 TIM_HandleTypeDef htim3;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -57,9 +61,10 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_RTC_Init(void);
+static void MX_USART2_UART_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -69,10 +74,12 @@ static void MX_RTC_Init(void);
 
 int __io_putchar(int ch)
 {
+#if COMM_USART_ENABLED
   if (ch == '\n') {
     __io_putchar('\r');
   }
   HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
+#endif
   return 1;
 }
 
@@ -103,18 +110,18 @@ void delay_us(uint32_t us)
 #if ! US_CLOCK_DELAY
 static void set_baudrate(uint32_t baudrate)
 {
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = baudrate;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	huart1.Instance = USART1;
+	huart1.Init.BaudRate = baudrate;
+	huart1.Init.WordLength = UART_WORDLENGTH_8B;
+	huart1.Init.StopBits = UART_STOPBITS_1;
+	huart1.Init.Parity = UART_PARITY_NONE;
+	huart1.Init.Mode = UART_MODE_TX_RX;
+	huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+	if (HAL_HalfDuplex_Init(&huart1) != HAL_OK)
+	{
+		Error_Handler();
+	}
 }
 #endif
 
@@ -377,34 +384,30 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
   MX_TIM3_Init();
   MX_RTC_Init();
+  MX_USART2_UART_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  printf("Hello!\n");
 
-#if 0
+  // "hello" blinks - disable for now, we need to conserve power
+  // printf("Hello!\n");
+  // for (int i = 0; i < 6; i++) {
+  //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  //   HAL_Delay(20);
+  // }
+
+
   if (ds18b20_init() != HAL_OK) {
     Error_Handler();
   }
 
+#if 0
   uint8_t ds1[DS18B20_ROM_CODE_SIZE];
-
   if (ds18b20_read_address(ds1) != HAL_OK) {
     Error_Handler();
   }
 #endif
-
-  // HAL_TIM_Base_Start_IT(&htim3);
-
-  for (int i = 0; i < 6; i++) {
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(50);
-  }
-
-  if (ds18b20_init() != HAL_OK) {
-    Error_Handler();
-  }
 
   const uint8_t ds1[] = { 0x28, 0xFF, 0xF2, 0xB5, 0x50, 0x16, 0x03, 0xA2 };
   const uint8_t ds2[] = { 0x28, 0x21, 0x20, 0xD6, 0x07, 0x00, 0x00, 0x15 };
@@ -427,8 +430,11 @@ int main(void)
     printf("T2 = %.1f*C\n", temp);
   }
 
+  // short blink to acknowledge we are alive:
+  // - apparently 100us is enough and still visible, how low can we go?
   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-  HAL_Delay(100);
+  // HAL_Delay(1);
+  delay_us(100);
   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
   // Enter the Standby mode
@@ -442,6 +448,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+#if 0
 	  ds18b20_start_measure(ds1);
 	  ds18b20_start_measure(ds2);
 	  HAL_Delay(750);
@@ -465,6 +472,7 @@ int main(void)
 	  HAL_Delay(100);
 	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 	  HAL_Delay(100);
+#endif
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -650,6 +658,39 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_HalfDuplex_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
