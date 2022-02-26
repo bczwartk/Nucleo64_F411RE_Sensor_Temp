@@ -36,7 +36,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 // set to 1 to use microsecond delay, set to 0 to use 1-wire USART communication:
-#define US_CLOCK_DELAY (1)
+#define US_CLOCK_DELAY (0)
 // set to zero if messaging USART is not to be used:
 #define COMM_USART_ENABLED (1)
 /* USER CODE END PD */
