@@ -1,0 +1,54 @@
+STM32F411RE with us_delay() or 1-wire via USART with single DS18B20, internal pull-up               
+
+
+               
+##  100ms ticks:    1615858                 / 0,100991125                                          
+##  Init ticks:     1683015     +67 157
+##  Init DS ticks:  1730258     +47 243
+##  Get temp 1:    14486711     +12 756 453
+T1 = 85.0*C
+##  Temp 1:        14565525     +78 814
+##  Get temp 2:    14934126     +368 601
+T2 = 85.0*C
+##  Temp 2:        15010610     +76 484                                                      
+##  Toggled:       15053753     +43 143
+                                            / 0,9408595625
+                                            
+                                            
+##  100ms ticks:    1615858                 / 0,100991125
+##  Init ticks:     1683204     +67 346     / 0,0042
+##  Init DS ticks:  1730447     +47 243     / 0,0029526875
+##  Get temp 1:    14486711     +12 756 264 / 0,7972665
+T1 = 85.0*C
+##  Temp 1:        14565448     +78 737     / 0,0049210625
+##  Get temp 2:    14934044     +368 596    / 0,02303725
+T2 = 85.0*C
+##  Temp 2:        15010664     +76 620     / 0,00478875
+##  Toggled:       15053943     +43 279     / 0,0027049375
+                                            / 0,9408714375
+
+USART
+##  Toggled: 13101249 => 0,8188280625
+##  Toggled: 13101058
+##  Toggled: 13101955 => 0,8188721875
+##  Toggled: 13101203 => 0,8188251875
+##  Toggled: 13101203
+
+Delay
+12143125 => 0,7589453125
+12142924 => 0,75893275
+
+time of measurement (t_m): 0.8s
+cycle time: (t_c)
+sleep time: (t_s): t_c - t_m
+
+current at sleep: 3uA
+current at measurement (max): 1.2mA
+total current draw per cycle t_d = 1.2mA * t_m + 0.003mA * (t_c - t_m)
+
+battery capacity (b_c): 3500 mAh
+=> in mAs: b_c * 3600
+
+possible cycles: b_c * 3600 / td
+                                            
+                                            

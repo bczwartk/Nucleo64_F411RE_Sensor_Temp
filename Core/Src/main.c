@@ -35,7 +35,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define US_CLOCK_DELAY (0)
+// set to 1 to use microsecond delay, set to 0 to use 1-wire USART communication:
+#define US_CLOCK_DELAY (1)
+// set to zero if messaging USART is not to be used:
+#define COMM_USART_ENABLED (1)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,6 +47,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+RTC_HandleTypeDef hrtc;
+
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart1;
@@ -56,9 +61,9 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_USART1_UART_Init(void);
+static void MX_RTC_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -68,11 +73,30 @@ static void MX_USART1_UART_Init(void);
 
 int __io_putchar(int ch)
 {
+#if COMM_USART_ENABLED
   if (ch == '\n') {
     __io_putchar('\r');
   }
   HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
+#endif
   return 1;
+}
+
+void HAL_Delay(uint32_t Delay)
+{
+  uint32_t tickstart = HAL_GetTick();
+  uint32_t wait = Delay;
+
+  /* Add a period to guaranty minimum wait */
+  if (wait < HAL_MAX_DELAY)
+  {
+    wait += (uint32_t)uwTickFreq;
+  }
+
+  while ((HAL_GetTick() - tickstart) < wait)
+  {
+	  __WFI();
+  }
 }
 
 void delay_us(uint32_t us)
@@ -85,18 +109,18 @@ void delay_us(uint32_t us)
 #if ! US_CLOCK_DELAY
 static void set_baudrate(uint32_t baudrate)
 {
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = baudrate;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	huart1.Instance = USART1;
+	huart1.Init.BaudRate = baudrate;
+	huart1.Init.WordLength = UART_WORDLENGTH_8B;
+	huart1.Init.StopBits = UART_STOPBITS_1;
+	huart1.Init.Parity = UART_PARITY_NONE;
+	huart1.Init.Mode = UART_MODE_TX_RX;
+	huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+	if (HAL_HalfDuplex_Init(&huart1) != HAL_OK)
+	{
+		Error_Handler();
+	}
 }
 #endif
 
@@ -347,49 +371,96 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  volatile uint32_t *DWT_CONTROL = (uint32_t *) 0xE0001000;
+  volatile uint32_t *DWT_CYCCNT = (uint32_t *) 0xE0001004;
+  volatile uint32_t *DEMCR = (uint32_t *) 0xE000EDFC;
+  volatile uint32_t *LAR  = (uint32_t *) 0xE0001FB0;   // <-- added lock access register
 
+  *DEMCR = *DEMCR | 0x01000000;     // enable trace
+  *LAR = 0xC5ACCE55;                // <-- added unlock access to DWT (ITM, etc.)registers
+  *DWT_CYCCNT = 0;                  // clear DWT cycle counter
+  *DWT_CONTROL = *DWT_CONTROL | 1;  // enable DWT cycle counter
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+  unsigned long int dwt_cnt_start = DWT->CYCCNT;
+  // HAL_Delay(100);
+  // unsigned int dwt_cnt_100ms = DWT->CYCCNT;
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
   MX_TIM3_Init();
-  MX_USART1_UART_Init();
+  MX_RTC_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  printf("Hello!\n");
+  // printf("##  100ms ticks: %lu\n", (dwt_cnt_100ms - dwt_cnt_start));
+  // printf("##  Init ticks: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
-#if 0
+  // "hello" blinks - disable for now, we need to conserve power
+  // printf("Hello!\n");
+  // for (int i = 0; i < 6; i++) {
+  //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  //   HAL_Delay(20);
+  // }
+
   if (ds18b20_init() != HAL_OK) {
     Error_Handler();
   }
+  // printf("##  Init DS ticks: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
 
+#if 0
   uint8_t ds1[DS18B20_ROM_CODE_SIZE];
-
   if (ds18b20_read_address(ds1) != HAL_OK) {
     Error_Handler();
   }
 #endif
 
-  // HAL_TIM_Base_Start_IT(&htim3);
-
-  for (int i = 0; i < 10; i++) {
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(50);
-  }
-
-  if (ds18b20_init() != HAL_OK) {
-    Error_Handler();
-  }
-
   const uint8_t ds1[] = { 0x28, 0xFF, 0xF2, 0xB5, 0x50, 0x16, 0x03, 0xA2 };
   const uint8_t ds2[] = { 0x28, 0x21, 0x20, 0xD6, 0x07, 0x00, 0x00, 0x15 };
+
+  ds18b20_start_measure(ds1);
+  // printf("##  Start measure 1: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+  ds18b20_start_measure(ds2);
+  // printf("##  Start measure 2: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+  HAL_Delay(750);
+  // printf("##  Measure delay: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+
+  float temp = ds18b20_get_temp(ds1);
+  // printf("##  Get temp 1: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+  if (temp <= -80.0f) {
+    printf("Sensor error (1)...\n");
+  } else {
+    printf("T1 = %.1f*C\n", temp);
+  }
+  // printf("##  Temp 1: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+
+  temp = ds18b20_get_temp(ds2);
+  // printf("##  Get temp 2: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+  if (temp <= -80.0f) {
+    printf("Sensor error (2)...\n");
+  } else {
+    printf("T2 = %.1f*C\n", temp);
+  }
+  // printf("##  Temp 2: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+
+  // short blink to acknowledge we are alive:
+  // - apparently 100us is enough and still visible, how low can we go?
+  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  // HAL_Delay(1);
+  delay_us(100);
+  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  printf("##  Toggled: %lu\n", (DWT->CYCCNT - dwt_cnt_start));
+
+  // Enter the Standby mode
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+  __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
+  HAL_PWR_EnterSTANDBYMode();
+
 
   /* USER CODE END 2 */
 
@@ -397,6 +468,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+#if 0
 	  ds18b20_start_measure(ds1);
 	  ds18b20_start_measure(ds2);
 	  HAL_Delay(750);
@@ -420,6 +492,7 @@ int main(void)
 	  HAL_Delay(100);
 	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 	  HAL_Delay(100);
+#endif
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -471,7 +544,8 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
@@ -492,6 +566,74 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x0;
+  sTime.Minutes = 0x0;
+  sTime.Seconds = 0x0;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+  sDate.Month = RTC_MONTH_JANUARY;
+  sDate.Date = 0x1;
+  sDate.Year = 0x0;
+
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Enable the WakeUp
+  */
+  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 4, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
 }
 
 /**
@@ -621,13 +763,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, DS_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : USER_BUTTON_Pin */
   GPIO_InitStruct.Pin = USER_BUTTON_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_BUTTON_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : DS_Pin */
+  GPIO_InitStruct.Pin = DS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(DS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
